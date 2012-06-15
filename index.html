@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <meta charset='utf-8' />
+    <meta http-equiv="X-UA-Compatible" content="chrome=1" />
+    <meta name="description" content="Ometa-js : OMeta for JavaScript" />
+
+    <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
+
+    <title>Ometa-js</title>
+  </head>
+
+  <body>
+
+    <!-- HEADER -->
+    <div id="header_wrap" class="outer">
+        <header class="inner">
+          <a id="forkme_banner" href="https://github.com/b-studios/ometa-js">View on GitHub</a>
+
+          <h1 id="project_title">Ometa-js</h1>
+          <h2 id="project_tagline">OMeta for JavaScript</h2>
+
+            <section id="downloads">
+              <a class="zip_download_link" href="https://github.com/b-studios/ometa-js/zipball/master">Download this project as a .zip file</a>
+              <a class="tar_download_link" href="https://github.com/b-studios/ometa-js/tarball/master">Download this project as a tar.gz file</a>
+            </section>
+        </header>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="main_content_wrap" class="outer">
+      <section id="main_content" class="inner">
+        <h1>Introduction To OMeta/JS</h1>
+
+<p>Writing parsers by hand can be quite tedious and error-prone, especially when implementing a language specification that still evolves or when experimenting with novel language features. Small changes in a grammar may result in complex changes of the parser. Thus, parser-generators are often used to automate this process. As we have seen in chapter [chap:compilation-process], a compiler commonly consists not only of a parser but also of a lexer, several translators and finally a code-generator - all of which being created with different tools or frameworks and maybe even using different languages. Alessandro Warth created OMeta to unify all of those tools in order to flatten the learning curve and to make experimenting with languages more easy [OMeta].</p>
+
+<p>The goal of this chapter is to provide a solid understanding of how to work with OMeta and specially OMeta/JS. Of course Warth's thesis [OMeta] is a great source for background information and this chapter may be seen as a restructured, updated and enriched form of [OMeta, chapter 2].</p>
+
+<p>OMeta is a general purpose <strong>pattern matching language</strong> based on parsing expression grammars (abbr. PEG). As we have seen PEGs unite the flexibility of CFGs and REs and thereby remove the separation between the process of lexical analysis and parsing. They usually operate on characters as terminals and hence can only be used to match strings.</p>
+
+<p>OMeta circumvents this limitation by allowing every object of the host-language to be a terminal, thus making it possible to use OMeta in almost every step of the compilation process. It also offers many extensions to PEG like <strong>parametrized rules</strong>, <strong>higher order rules</strong> and <strong>grammar inheritance</strong> described in the remainder of this chapter.</p>
+
+<p>Working with OMeta can be split into three single steps:</p>
+
+<ol>
+<li>Write your grammar in OMeta-language</li>
+<li>Set up the OMeta-compiler and compile the grammar</li>
+<li>Use the resulting grammar-object to match and translate input-streams</li>
+</ol><p>OMeta uses <strong>memoization</strong> to increase performance and therefore reduces the drawbacks resulting from backtracking (Also see [FordPackrat] and chapter [sub:memoization]). In addition, it allows the use of <strong>left-recursive rules</strong> by modifying the memoization algorithm (See [WarthLeftRecursion] and [OMeta, chapter 3]).</p>
+
+<h2>OMeta/JS</h2>
+
+<p>Being a generic language for grammar-description, OMeta has been implemented in many different <strong>host languages</strong>. In the remainder we will take a look atdescribe Alessandro Warth's reference implementation written in JavaScript (called OMeta/JS).</p>
+
+<p>In order to get an idea of how an OMeta grammar looks like, the following listing shows a grammar with three simple rules, each separated by a comma. This simplified grammar matches JavaScript identifiers like <code>foobar</code>, <code>$1</code> and <code>_global</code>, always starting with rule <code>identifier</code>.</p>
+
+<pre><code>ometa ID {
+  identifier = nameFirst namePart*,
+  nameFirst  = letter | '$' | '_',   
+  namePart   = nameFirst | digit  
+}
+</code></pre>
+
+<p>Here the structure of every OMeta gets visible. Since OMeta/JS is a combination of the OMeta-language and JavaScript the keyword <code>ometa</code> is used to announce that a following section is written in OMeta. After the introductory keyword the <strong>name</strong> of the OMeta grammar is expected before it's implementation can take place inside of the following block. Compiling this grammar to JavaScript results in a JavaScript-object <code>ID</code> containing three methods to match the specified rules. Since no parent-grammar has been specified OMeta assumes that it's base grammar <code>OMeta</code> should be the parent. Hence, a prototypal link to an object representing this base grammar is added as depicted in the figure below. Here we can get a quick idea of how OMeta/JS models the inheritance of different grammars by using the prototype-chain.</p>
+
+<img src="images/object-relationship.png" alt="Grammar Object ID inherits from base grammar OMeta by the means of prototypal inheritance">The two grammar objects ID and OMeta<h2>Writing Grammars</h2>
+
+<p>The most important part of implementing a parser by the means of a parser generator is to write a grammar. To accomplish this task we will start off by taking a look at the different tools and syntax elements provided by OMeta.</p>
+
+<h3>Differences to PEG</h3>
+
+<p>OMeta supports almost all default operators that can be found in PEG. Nevertheless, new features have been introduced which conflict syntactically with existing operators. The following table illustrates the differences to the syntax as it is known from PEG.</p>
+
+ 
+  
+  <dl>
+<dt>
+<code>expr_a | expr_b</code>
+  </dt>
+<dd>Priotized <strong>Choice</strong> (try <code>expr_a</code> then <code>expr_b</code>)
+  </dd>
+</dl><dl>
+<dt>
+<code>expr_a ␣ expr_b</code>
+  </dt>
+<dd>
+<strong>Sequence</strong> (<code>expr_a</code> followed by <code>expr_b</code>)
+  </dd>
+</dl><dl>
+<dt>
+<code>(expr)</code>
+  </dt>
+<dd>
+<strong>Grouping</strong> to force precedence
+  </dd>
+</dl><dl>
+<dt>
+<code>expr?</code>
+  </dt>
+<dd>
+<strong>Optional</strong> occurance of <code>expr</code>
+  </dd>
+</dl><dl>
+<dt>
+<code>expr+</code>
+  </dt>
+<dd>
+<strong>Multiple</strong> occurance of <code>expr</code>, but at least once
+  </dd>
+</dl><dl>
+<dt>
+<code>expr*</code>
+  </dt>
+<dd>
+<strong>Zero or many</strong> subsequent <code>expr</code>.
+  </dd>
+</dl><dl>
+<dt>
+<code>&amp;expr</code>
+  </dt>
+<dd>
+<strong>Positive lookahead</strong> of <code>expr</code>. Does not consume anything.
+  </dd>
+</dl><dl>
+<dt>
+<code>~expr</code>
+  </dt>
+<dd>
+<strong>Negative lookahead</strong> of <code>expr</code>. Does not consume anything.
+  </dd>
+</dl><dl>
+<dt>
+<code>anything</code>
+  </dt>
+<dd>
+<strong>Consumation</strong> of the next input without inspecting it
+  </dd>
+</dl> 
+  PEG Operators in OMeta<p>Character classes as they are known from regular expressions and adopted by PEG do not have an equivalent syntax in OMeta. In order to allow the pattern matching of lists (as it can be seen in section [sub:Pattern-Matching]), brackets had to be reserved and thus could not be used to match character classes. Regardless of the missing syntax it is still possible in OMeta/JS to implement a character range by using parametrized rules. For example the class <code>[a-z]</code> can be matched by the rule <code>range('a', 'z')</code>. The implementation of range can be found in appendix [chap:OMeta-methods].</p>
+
+<p>The use of basic PEG operators within OMeta is demonstrated in the next code sample.</p>
+
+<pre><code>ometa Numbers {
+  number     = decimal,
+  decimal    = '-'? decimalInt+ ('.' digit+)? expPart?
+             | '-'? ('.' digit+) expPart?,
+  decimalInt = '0' | (~'0' digit) digit*,   
+  expPart    = ('e' | 'E') ('+' | '-')? digit+  
+}
+</code></pre>
+
+<p>As already known from PEG, the lookahead operators assure whether the next input-token does (<code>&amp;</code> positive) or does not (<code>~</code> negative) match the given expression. It is important to note that thereby <strong>no input is consumed</strong>. In this example it gets visible how the negative lookahead operator is used to exclude the character <code>'0'</code> which would otherwise be matched by the rule <code>digit</code>. The starting point for this grammar is the rule <code>number</code>. The grammar matches all allowed decimal numbers like <code>-3</code>, <code>4.7</code>, <code>.6</code> and <code>6.18e-1</code>.</p>
+
+<h3>Pattern Matching</h3>
+
+<p>In contrast to PEG which only allows to match a stream of characters, OMeta is able to match a stream of arbitrary host-language objects. There are quite a few types of objects in JavaScript for which OMeta provides a dedicated syntax as it can be seen in the following table.</p>
+
+ 
+  <dl>
+<dt>
+<code>'c'</code>
+  </dt>
+<dd>Matches a string-object of the host-language. During parsing a string is decomposed into a stream of characters. Hence, most of the time this notation is used to match single characters
+  </dd>
+</dl><dl>
+<dt>
+<code>``string''</code>
+  </dt>
+<dd>Matches a sequence of characters (Please note, that the string is delimited by two backticks on the left and two single quotes on the right hand side)
+  </dd>
+</dl><dl>
+<dt>
+<code>1337</code>
+  </dt>
+<dd>Matches a number-object of the host-language
+  </dd>
+</dl><dl>
+<dt>
+<code>[char 'o' 'o' 1234]</code>
+  </dt>
+<dd>The list notation allows matching a sequence of arbitrary objects inside of a list.
+  </dd>
+</dl> 
+  Syntax for matching different types of objects<p>Like with PEG, the most basic terminals a parser may recognize are single characters and sequences of characters. When matching a string like <code>"var foo = 4"</code> OMeta destructs this string into it's single characters in order to form a stream:</p>
+
+<pre><code>['v', 'a', 'r', ' ', 'f', 'o', 'o', ' ', '=', ' ', '4']
+</code></pre>
+
+<p>Here it gets visible why every single character has to be matched separately. If a sequence of characters like <code>var</code> is expected this has to be denoted explicitly by using the character sequence notation <code>``var''</code>. In fact, this notation is semantically equivalent to <code>'v'</code> <code>'a'</code> <code>'r'</code>.</p>
+
+<p>In contrast to parsers, a translator has to work on structures. For this task OMeta provides a notation that can be used to match lists. Consider the task of converting a prefix notation, as it is used by Lisp, to be infix. Given the following input</p>
+
+<pre><code>['+', 5, ['-', 3, 8]]
+</code></pre>
+
+<p>a grammar has to recursively match the contents of the lists. Like already said, this can be performed by using the list-notation like</p>
+
+<pre><code>ometa PreToInfix {
+  list     = [operator:op content:first content:second] -&gt; [first, op, second],
+  content  = list | number,
+  operator = '+' | '-' | '*' | '/'
+}
+</code></pre>
+
+<p>Please note that in contrast to JavaScript arrays, the elements inside of the list-notation are separated by <strong>whitespaces</strong> and <strong>not commas</strong>. To transform the output of rule <code>list</code>, semantic actions are used which will be presented in subsequent sections.</p>
+
+<p>Generally speaking, every JavaScript object may be matched by utilizing predicates. For example the rule</p>
+
+<pre><code>expressions = anything:n ?(n.name == expr)
+</code></pre>
+
+<p>can be used to match objects like <code>{ name: "expr", contents: [] }</code>. Until now, there is no special pattern matching syntax for generic objects.</p>
+
+<h3>Semantic Predicates</h3>
+
+<p>Since OMeta/JS is an aggregation of OMeta and JavaScript, we can use JavaScript inside of <code>semantic predicates</code> to refine the matching process. The host-language expression inside of a semantic predicate should evaluate to a boolean value. If the resulting value is <code>falsy</code>, the matching of the current rule is assumed to be failed and therefore aborted, whereas a truthy value leads to a continuation of the matching-process. The following grammar uses predicates to differ between even and odd digits in order to match numbers like <code>381496</code>. It gets visible that the prefix-operator <code>?</code> is followed by a JavaScript expression which may, but don't necessarily has to be wrapped in parenthesis.</p>
+
+<pre><code>function even(digit) {
+  return parseInt(digit) % 2 === 0;
+}
+ometa EvenOdd {
+  even   = digit:d ?even(d),
+  odd    = digit:d ?( !even(d) ),
+  number = &lt;(even odd)+ even?
+           | even
+           &gt;:n -&gt; parseInt(n)
+}
+</code></pre>
+
+<p>Of course the function even could have also been inlined in the semantic predicates like:</p>
+
+<pre><code>even = digit:d ?(parseInt(d) % 2 === 0)
+</code></pre>
+
+<p>In OMeta, the result of the last expression within a rule always is used as result of the rule. Since the semantic predicate returns a boolean value, the result of the rules <code>even</code> and <code>odd</code> is this boolean value and not the digit itself. To bypass this problem the capture operator <code>&lt;...&gt;</code> is used that records all input which is matched by the enclosed rules. Another solution to this problem would have been to add a semantic action at the end of each rule:</p>
+
+<pre><code>even = digit:d ?even(d)      -&gt; d,
+odd  = digit:d ?( !even(d) ) -&gt; d,
+</code></pre>
+
+<p>Semantic predicates also can be used to include context information in matching decisions. For example it might be checked whether a variable, to which a value is about to be bound, has been declared before hand.</p>
+
+<h3>Semantic Actions</h3>
+
+<p>Usually, it is the job of a grammar to decide whether or not an input can be matched using the given rules. Although this is a useful information, we often need to work with the recognized input in order to extract information or to modify it. For example a stream of strings may be transformed into an intermediate representation like an abstract syntax tree. The other way around, an existing AST can be used as input to a translator to be converted to code again. For this purpose the output of each rule may be transformed using so called <strong>semantic actions</strong>.</p>
+
+<p>There are three different ways to express semantic actions in OMeta. The first one, which is mostly used to transform the output of a rule, is denoted by the arrow-operator <code>-&gt;</code>. It may appear after each expression and is delimited by either a comma (end of rule), pipe-character (end of choice) or closing curly brace (end of grammar). Hence, it's precedence is higher than a choice, but lower than a sequence. If a programmer wants to define a semantic action to manipulate the output of a choice-expression as a whole and not for a individual option, the choice has to be wrapped in parenthesis. The implementation of a semantic action can be any <strong>expression</strong> of the host language.</p>
+
+<p>Again, if no semantic action is given for a rule, the result of the last applied expression is used without any transformation.</p>
+
+<pre><code>ometa Numbers {
+  number     = decimal,
+  decimal    = &lt;'-'? decimalInt+ ('.' digit+)? expPart?&gt;:n -&gt; parseFloat(n)
+             | &lt;'-'? ('.' digit+) expPart?&gt;:n              -&gt; parseFloat(n),
+  decimalInt = '0' | (~'0' digit) digit*,   
+  expPart    = ('e' | 'E') ('+' | '-')? digit+
+}
+</code></pre>
+
+<p>The above grammar is a enhancement of the grammar previously seen. Semantic actions are used in rule decimal on the right-hand side of every choice to call the JavaScript function <code>parseFloat(n)</code>. But where does the identifier <code>n</code> come from and to which value is it bound? The <strong>capture operator</strong>, denoted by <code>&lt; ... &gt;</code> captures the input used to match the inner expressions. It is very useful if we want to work with the consumed input independently of any transformations performed in the descendant rules. Using the property assignment operator <code>lhsExpr:id</code> the result of evaluating the left-hand side expression is bound to the identifier, which can be accessed in every associated host-language code like semantic actions, predicates and calls to parametrized rules.</p>
+
+<p>When trying to find out in which scope an identifier can be used, we have to recall that every rule is compiled to it's own JavaScript function. Thus, every variable defined by the assignment operator can be accessed only within the corresponding rule. </p>
+
+ 
+  <dl>
+<dt>
+<code>expr -&gt; host_expr</code>
+  </dt>
+<dd>
+<strong>Semantic action</strong> which transforms the result of <code>expr</code>, using an expression in the host language. (i.e. JavaScript)
+  </dd>
+</dl><dl>
+<dt>
+<code>{host_expr}</code>
+  </dt>
+<dd>
+<strong>Semantic action</strong>, equivalent to the above except that the host expression is enclosed by curly braces.
+  </dd>
+</dl><dl>
+<dt>
+<code>!host_expr</code>
+  </dt>
+<dd>
+<strong>Semantic action</strong>, again equivalent to arrow notation
+  </dd>
+</dl><dl>
+<dt>
+<code>?host_expr</code>
+  </dt>
+<dd>
+<strong>Semantic predicate</strong> - if <code>host_expr</code> evaluates to <code>true</code>, than the rule matches sucessfully.
+  </dd>
+</dl><dl>
+<dt>
+<code>rule( host_expr )</code>
+  </dt>
+<dd>
+<strong>Parametrized rule</strong> - the result of <code>host_expr</code> is prepended to the inputstream before <code>rule</code> is applied.
+  </dd>
+</dl><dl>
+<dt>
+<code>expr:id</code>
+  </dt>
+<dd>
+<strong>Assignment operator</strong> - binds the result of <code>expr</code> to the variable <code>id</code> which can be used in host-language context
+  </dd>
+</dl><dl>
+<dt>
+<code>&lt; expr &gt;</code>
+  </dt>
+<dd>
+<strong>Capture operator</strong> - works like the grouping-operator, but captures all consumed input used to match <code>expr</code> and returns it.
+  </dd>
+</dl><dl>
+<dt>
+<code>@&lt;rule&gt;</code>
+  </dt>
+<dd>
+<strong>Index capture operator</strong> - returns an object that contains the indices framing the consumed input (e.g. { fromIdx: 3, toIdx: 7 })
+  </dd>
+</dl><dl>
+<dt>
+<code>Foreign.rule</code>
+  </dt>
+<dd>
+<strong>Foreign rule invokation</strong> - calls rule <code>rule</code>, residing in the foreign grammar <code>Foreign</code>
+  </dd>
+</dl> 
+  Summary of OMeta syntax, as additional to PEG operators<p>The above table gives an overview over the different syntactical extensions OMeta offers. The first three entries of the table all represent semantic actions. They only differ in their syntax. Semantic actions are executed during the matching process according to their position within a rule. The side-effects created by semantic actions are not automatically undone by OMeta if a rule does not match in the end. The behavior of creating side-effects is visually emphasized by the exclamation prefix notation.</p>
+
+<h3>Parametrized Rules</h3>
+
+<p>OMeta adds even more flexibility to the grammar by allowing the use of arguments on rules, so called <strong>parametrized rules</strong>. Those rules behave basically the same as the one without arguments. The passed arguments are simply prepended to the input stream, before the rule is matched. Consequently, parametrized rules also support pattern matching on their parameters. Thus, the notation <code>rule :a :b</code> is only shorthand for <code>rule anything:a anything:b</code>.</p>
+
+<p>Let's examine an extension to the above grammar EvenOdd. Instead of defining multiple rules, one for each digit-type, there is only one parametrized rule.</p>
+
+<pre><code>ometa EvenOdd {
+  even   :yes = digit:d ?(yes === even(digit)),
+  number      = &lt;(even(true) even(false))+ even(true)?
+                | even(true)
+                &gt;:n -&gt; parseInt(n)
+}
+</code></pre>
+
+<p>It is important to point out that the call-arguments of parametrized rules can be any valid expressions of the host language. The result of the expression is than bound to the parameter of the invoked parametrized rule. In the first call to <code>even</code> the JavaScript value <code>true</code> is bound to the parameter <code>yes</code> and therefore further can be used in all locations where host-language is allowed.</p>
+
+<p>Another example for parametrized rules is the built-in function <code>token(tok)</code>. As previously stated, OMeta can be used as "one shoe fit's it all" solution for the diverse compilation stages. The <code>token</code> rule helps to combine "scannerful" and "scannerless" parsing. The stage of lexical analysis, usually performed by a <strong>lexer</strong>, can be included in the parser-grammar:</p>
+
+<pre><code>ometa Lisp {
+  // Lexer
+  identifier = &lt;letter+&gt;:id      -&gt; { type: "Id", value: id },
+  number     = &lt;digit+&gt;:num      -&gt; { type: "Number", value: parseInt(num) },  
+  punctuator = '(' | ')' |'.' | ',',
+
+  token :tt  = spaces ( punctuator:t             ?(t == tt)      -&gt; t
+                      | (identifier | number):t  ?(t.type == tt) -&gt; t
+                      ),
+
+  // Parser
+  list       = token("(") (atom | list)+:cs token(")") -&gt; { type: "List", content: cs },
+  atom       = token("Id") | token("Number")  
+}
+</code></pre>
+
+<p>Starting with rule list the grammar can be used to parse simple Lisp-like lists. The given input <code>"(plus 4 (minus 8 6)"</code> results in the tree consisting of objects:</p>
+
+<pre><code>{ type: "List", content: [
+  { type: "Id", value: "plus" },
+  { type: "Number", value: 4 },
+  { type: "List", content: [
+    { type: "Id", value: "minus" },
+    { type: "Number", value: 8 },
+    { type: "Number", value: 6 }]
+  }]
+}
+</code></pre>
+
+<p>Every object has one property <code>type</code> to specify it's kind. Additionally identifier and numbers save their values in the property <code>value</code>. Lists in turn store the contained list items in the property <code>content</code>.</p>
+
+<p>As it gets clearly visible the lexer is included directly in the parser grammar. Every time a token needs to be scanned the method <code>token</code> is invoked, providing the required type of token as a string. OMeta provides a special syntax for this kind of invocation since it is used pretty often. Instead of writing <code>token("Id")</code> the programmer might simply use a shorthand syntax <code>"Id"</code>. At first glance this might easily be mixed up with the matching of strings. Hence, it is important to keep in mind that strings are broken down to character sequences and therefore the syntax <code>``string''</code> or <code>seq("string")</code> has to be used.</p>
+
+<p>Using the shorthand notation for token the parser rules may be rewritten as</p>
+
+<pre><code>list       = "(" (atom | list)+:cs ")" -&gt; { type: "List", content: cs },
+atom       = "Id" | "Number"
+</code></pre>
+
+<p>which is much more convenient to read and write.</p>
+
+<h3>Higher-Order Rules</h3>
+
+<p>Among the methods of the OMeta base grammar the <code>rule apply(rule_name)</code> can be found, which expects <code>rule_name</code> to be a string and invokes the rule in place. Therefore, a call to <code>apply("myrule")</code> is identical to <code>myrule</code>. Equipped with <code>apply</code> and parametrized rules it is possible to create <strong>higher order rules</strong> by passing rule-names as arguments. The higher order rule itself can in turn make use of <code>apply</code>. In OMeta some built-in functions are implemented that way. In appendix [chap:OMeta-methods] a pseudo implementation of the base grammar with all of it's built-in rules can be found. For example let's analyze <code>listOf(rule, sep)</code> that can be used to match a list of items. The internal implementation is close to:</p>
+
+<pre><code>listOf :rule :sep = apply(rule):f (token(sep) apply(rule)):r*  -&gt; [f].concat(r)
+                  | empty                                      -&gt; []
+</code></pre>
+
+<p>Each item has to match rule and is delimited by the provided separator. Here we can see how the given rule is applied at all positions where a matching item is expected. Considering the above number-grammar, a call to <code>listOf(#decimal, ',')</code> could match an input string like <code>"1.5, 4, -8"</code>. The usage of the dubious literal <code>#decimal</code> as first argument will be explained in the following section.</p>
+
+<h3>It's all about Context: OMeta or JavaScript?</h3>
+
+<p>To write comprehensive grammars in OMeta it is necessary to distinguish between the two languages we are working with. Firstly the OMeta language and secondly the underlying host-language: JavaScript. Outside of a grammar definition only host-language code is valid. For example we are not able to write OMeta rules outside of a grammar.</p>
+
+<pre><code>// here only JavaScript can be written
+ometa Grammar {
+  // only OMeta is allowed right here
+  rule   :a :b = { ... } otherRule !( ... )  -&gt; ...,  // semantic action
+  otherRule    = rule:c ?( ... ),                     // semantic predicate
+  start        = rule(..., ...) "rule" apply(...)     // parametrized rule
+}
+// again: just JavaScript is allowed
+</code></pre>
+
+<p>The other way around, OMeta is our primary language inside of a grammar definition as it is illustrated the above piece of code. Here we can see that host-language code is valid outside of a grammar ( <code>... ometa Grammar {} ...</code> ), inside of semantic predicates ( <code>?(...)</code> ), inside of semantic actions ( <code>{...}</code>, <code>!(...)</code> and <code>-&gt; ...</code> ) and inside the call of parametrized rules ( <code>rule(...)</code> ). At every occurrence of an ellipsis we might implement a JavaScript expression. As an exception to that rule, in the first case also all JavaScript statements are also allowed.</p>
+
+<p>However, there are some ambiguous notations regarding strings. For example, as we have seen, the notation <code>"attention"</code> in OMeta-language context is <strong>not a string</strong>. It is equivalent to calling the parametrized function <code>token</code> and passing the JavaScript string value <code>attention</code> as first argument. In contrast, appearing in host-language context <code>"attention"</code> represents a string. In order to prevent this confusing usage of double quoted string, the word literal (e.g. <code>#singleWord</code>) has been introduced to host-language context. The following table provides an overview of string literals and their semantics depending on the context of use.</p>
+
+<table>
+<tr>
+<th>
+  </th>
+<th>
+<code>#</code>
+  </th>
+<th>
+<code>" "</code>
+  </th>
+<th>
+<code>' '</code>
+  </th>
+<th>
+<code>`` ''</code>
+  </th>
+</tr>
+<tr>
+<th>OMeta
+  </th>
+<td>single word string
+  </td>
+<td>
+<code>token(...)</code>
+  </td>
+<td>string-object
+  </td>
+<td>char-sequence
+  </td>
+</tr>
+<tr>
+<th>JavaScript
+  </th>
+<td>single word string
+  </td>
+<td>string
+  </td>
+<td>string
+  </td>
+<td>-
+  </td>
+</tr>
+</table>Semantics of string-literals depending on the context<pre><code>[tab:Semantics-of-string-literals]
+</code></pre>
+
+<p>All host-language sections inside of a grammar are compiled into individual functions which are called in the context of the grammar-object. Due to this fact, the binding of <code>this</code> in these sections is always the grammar-object itself.</p>
+
+<h3>Grammar Inheritance</h3>
+
+<p>One of the most important features in OMeta is the reuse and composition of grammars. Grammars can make use of other grammars in two ways. Firstly, a grammar can inherit from another. This is expressed by using the inheritance operator <code>&lt;:</code> followed by the grammar to inherit from. If no parent is given, the grammar implicitly inherits from the OMeta base grammar which is stored in the grammar-object <code>OMeta</code>. Thus writing <code>grammar Numbers {}</code> and <code>grammar Numbers &lt;: OMeta {}</code> is equivalent. Of course the parent grammar needs to be compiled first before it can be extended.</p>
+
+<p>For example let's extend the number grammar to additionally allow hexadecimal numbers to be matched. This may be achieved by writing a grammar similar to the following one:</p>
+
+<pre><code>ometa HexNumbers &lt;: Numbers {
+  range :from :to = char:x ?(from &lt;= x &amp;&amp; x &lt;= to)             -&gt; x,
+  hexDigit        = digit | range('a', 'f') | range('A', 'F'),    
+  hex             = ``0x'' &lt;hexDigit+&gt;:ds                      -&gt; parseInt(ds, 16),
+  number          = hex | ^number
+}
+</code></pre>
+
+<p>The function <code>range</code> is introduced to check for character ranges. The implementation is identical to the one in appendix [chap:OMeta-methods]. It is realized as a parametrized rule expecting two parameters - the lower as well as the upper boundary. Rule <code>hex</code> indirectly uses this function to match an arbitrary number of hex digits and returns the decimal value Tthe second argument of the JavaScript function call <code>parseInt(ds, 16)</code> is the radix parameter, specifying that the hexadecimal system should be used for parsing). The last rule <code>number</code> matches either the rule <code>hex</code> or <code>^number</code>. The latter is a <strong>super-call</strong> to the parent-grammar applying rule <code>number</code>. In general, if a rule isn't defined in the grammar, the lookup automatically continues recursively with the parent-grammar. Given the situation that a rule with the exact same name is defined in the child grammar, just like <code>number</code>, this rule is preferred and shadows the implementation of it's parent. This behavior is similar to the one found in classical object orientation. Nevertheless, it is still possible to access the parent-rule by using the super-call operator. The following figure illustrates how OMeta/JS uses the prototypal chain to realize the inheritance of the different grammars.</p>
+
+<p><img src="images/grammar-inheritance.png" alt="Grammar HexNumbers' prototypal link points to grammar object Numbers, which in turn inherits from the OMeta base grammar."></p>
+
+<p>Another example for using this inheritance-mechanism is to create debugging rules:</p>
+
+<pre><code>log :rule = ^pos:p &lt;apply(rule)&gt;:t !console.log("pos "+p+":", t) -&gt; t,
+next      = ^pos:p &amp;anything:t     !console.log("pos "+p+":", t)
+</code></pre>
+
+<p>The first rule <code>log</code> is a higher order rule expecting the rule name to apply. It can be used to log the position and input consumed by a special rule. The second rule <code>next</code> is a little easier to understand. A positive lookahead is used to log the position and the upcoming element of the input-stream without consuming it.</p>
+
+<p>Since at the end of the inheritance-chain every grammar implicitly extends OMeta, it is important to know which rules are provided by this special grammar-object. For this purpose a pseudo implementation of all rules the base object offers can be found in appendix [chap:OMeta-methods].</p>
+
+<h3>Foreign Rule Invocation</h3>
+
+<p>Building on top of existing grammars, the mechanism of inheritance is a big advance to the classical way of combining two grammars: Copying both grammars into one file and hope there are no name-clashes. But single inheritance fails when we want to include two or more grammars into a new one. This is when it comes to <strong>foreign rules</strong>.</p>
+
+<p>Given the example we want to implement a syntax highlighter that automatically detects SQL strings within another language (for instance JavaScript). Equipped with the two grammars JavaScript and SQL this task can be accomplished pretty easy:</p>
+
+<pre><code>ometa Highlighter &lt;: JavaScript {
+  string = '"' SQL.statement:c '"' -&gt; { type: "SQLString", content: c }
+         | ^string
+}
+</code></pre>
+
+<p>In this example we are extending the rule <code>string</code> to also match SQL strings. If the contents of the string cannot be recognized by the foreign rule <code>SQL.statement</code>, the rule falls back to the parent implementation of grammar <code>JavaScript</code>. This example illustrates how rules of other grammar objects can just be applied as if they where part of the current grammar. Nevertheless, in contrast to grammar inheritance, applying foreign rules results in a change of contexts. The input stream is just borrowed by the foreign rule and handed back when the matching has been finished. Returning the flow of control is performed anyway, independent of success or error.</p>
+
+<p>This procedure can be compared to switch the track for matching and continue on this track as far as we can. After the matching on that track is finished we change the lane again and return to the original grammar. Of course, just like every own rule, the track can always be a dead end.</p>
+
+<p>The following figure illustrates the dependencies of the different grammars involved in the previous example.</p>
+
+<p><img src="images/foreign-rule.png" alt="Highlighter inherits from JavaScript, but invokes the statement-rule of grammar SQL in order to parse special SQL strings."></p>
+
+<p>Again, it is an important requirement that all grammar objects have to be loaded in the same environment before they may be used for inheritance or foreign rule invocation.</p>
+
+<h2>Using OMeta/JS</h2>
+
+<p>In the previous section we have learned how to write sophisticated OMeta/JS grammars. In order to be able to use the grammars in combination with the reference implementation we have to do some preparations. The first step is to load all files required to compile the grammars. A list of those files, together with a short description, can be found in appendix [sec:ometa-js-files].</p>
+
+<p>Due to the large amount of files it appears reasonable to concatenate them to one file, which we may call <code>ometajs.js</code> in the remainder of this section. After all, in order to use OMeta/JS the most important three objects implemented in those files are:</p>
+
+<dl>
+<dt>OMeta</dt>
+  <dd>The base grammar object every grammar inherits from.</dd>
+  
+  <dt>BSOMetaJSParser</dt>
+  <dd>This grammar object can be used to parse OMeta/JS grammars, starting with the rule topLevel.<dd>
+  
+  </dd>
+</dd>
+<dt>BSOMetaJSTranslator</dt>
+  <dd>This grammar object can be used to compile the tree, produced by `BSOMetaJSParser`, to JavaScript code. The starting rule for this grammar is `trans`.</dd>
+</dl><p>Since OMeta/JS is implemented in JavaScript we may use it inside of a browser environment. In the following, we will set up OMeta in a few steps. For this purpose, we create a html file called <code>ometa.html</code> with the following contents:</p>
+
+<pre><code>&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+  &lt;head&gt;
+    &lt;title&gt;OMeta/JS&lt;/title&gt;
+    &lt;script src="ometajs.js"&gt;&lt;/script&gt;
+    &lt;script language="OMetaJS" id="grammar"&gt; ... &lt;/script&gt;
+    &lt;script&gt;
+      ...
+    &lt;/script&gt;
+  &lt;/head&gt;
+  &lt;body&gt;&lt;/body&gt;
+&lt;/html&gt;
+</code></pre>
+
+<p>The necessary files to compile and execute OMeta/JS grammars are included in the first script-tag. Inside of the second script-tag with attribute <code>language</code> set to <code>OMetaJS</code> (Which by the way only is for illustrative purpose) we may now add any OMeta/JS grammar like the <code>Numbers</code> grammar, as seen above. The setup of the compilation process, as described in the following, takes place within the third script-tag. First of all we need to retrieve the textual <code>source</code> of our grammar definition. This can be easily achieved by requesting the script-tag and reading property <code>innerHTML</code>.</p>
+
+<pre><code>var source = document.getElementById("grammar").innerHTML;
+</code></pre>
+
+<p>The next step is to parse the source, using <code>BSOmetaJSParser</code> which is already loaded into the global namespace by including <code>ometajs.js</code>. Like every OMeta object the parser provides the two methods <code>match</code> and <code>matchAll</code>. At this point only the latter one is of significance.</p>
+
+<pre><code>matchAll(input, rule, args?, failure?)
+</code></pre>
+
+<p>The function requires at least two arguments. The first argument, representing the input which is about to be matched by the grammar, has to be a streamable object. This only applies to strings and arrays by default. The second argument <code>rule</code> specifies the starting point of the matching process. The remaining arguments are optional. If the starting rule is a parametrized rule, the required arguments can be prepended to the input stream by providing an array as third argument <code>args</code>. Finally an optional callback function <code>failure</code> can be registered to handle errors.</p>
+
+<pre><code>var tree = BSOMetaJSParser.matchAll(source, 'topLevel');
+</code></pre>
+
+<p>The result of the matching process is an OMeta/JS language parse-tree, representing our grammar definition. In order to receive valid JavaScript code we need to translate this tree using the <code>BSOMetaJSTranslator</code> object and the method <code>match</code>. The required arguments of <code>match</code> are exactly the same like the ones of <code>matchAll</code>, with the exception that any JavaScript object may be provided as <code>input</code> (For instance the OMeta grammar <code>ometa Four { n = 4 }</code> will successfully match the number four by applying <code>Four.match(4, 'n')</code>). In this case we are matching the syntax tree resulting from the previous step.</p>
+
+<pre><code>var grammar = BSOMetaJSTranslator.match(tree, 'trans');
+</code></pre>
+
+<p>After applying the above line, the variable grammar contains a textual representation of JavaScript code. To bring it to life and in order to actually use our grammar object we have to evaluate the JavaScript-string.</p>
+
+<pre><code>eval(grammar);
+</code></pre>
+
+<p>This introduces a new variable in the global scope named identical to the compiled grammar. In this case the variable <code>Numbers</code> will contain the desired grammar object.</p>
+
+<h3>Stateful Pattern Matching</h3>
+
+<p>By adding semantic actions OMeta allows not only to manipulate the results of expressions (for instance in order to create the syntax tree), but also to trigger side effects during the process of matching. This can be really useful, for instance if we want to gather information such as the occurrence of strings in order to collect them in a string table. An example of how this task can be achieved is illustrated in the next code sample:</p>
+
+<pre><code>ometa SomeParser {
+  ...
+  string = '"' &lt;(~'"' char)+&gt;:cs '"' !this.collect(cs):i -&gt; { type: "String", id: i }
+  ...
+}
+Parser.initialize = function() { this.strings = []; }
+Parser.collect = function(string) {
+  var i = this.strings.indexOf(string);
+  if(i === -1)
+    return this.strings.push(string) - 1;
+  else
+    return i;
+}
+</code></pre>
+
+<p>In this example <code>SomeParser</code> makes use of semantic actions like <code>!this.collect</code> to push all found strings in a shared string table. Each string is only stored once - duplicates are filtered. Each string is finally replaced with an AST node containing the id (the position of the string inside of the collection), not the value itself. The callback function <code>initialize</code> is registered in order to prepare the parser instance before the matching can start.</p>
+
+<h2>Summary</h2>
+
+<p>OMeta/JS rendered itself to be an elegant solution for the different steps of compilation. It allows to match not only streams of characters, but also arbitrary host objects. To provide this functionality, the OMeta language shows some differences compared to common parsing expression grammars. Additionally, it equips the developer with features like left-recursion, semantic predicates, semantic actions, grammar inheritance and foreign rule invocation. We have seen how parametrized rules can be combined with the rule <code>apply</code> to create higher order rules. Nevertheless, there are some pitfalls like the difference between host-language and OMeta context. Moreover, the subtle distinction between the various string-literals is not quite easy and requires some attention.</p>
+
+<p>Due to the fact that setting up OMeta requires the inclusion of many files, we have concatenated them all into one single file. This allows to work with OMeta grammars more easily.</p>
+      </section>
+    </div>
+
+    <!-- FOOTER  -->
+    <div id="footer_wrap" class="outer">
+      <footer class="inner">
+        <p class="copyright">Ometa-js maintained by <a href="https://github.com/b-studios">b-studios</a></p>
+        <p>Published with <a href="http://pages.github.com">GitHub Pages</a></p>
+      </footer>
+    </div>
+
+    
+
+  </body>
+</html>
